@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/start-dev.mjs",
+    "dev:web": "vite",
+    "dev:api": "node --env-file=.env server.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
