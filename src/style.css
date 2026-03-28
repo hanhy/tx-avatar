@@ -242,8 +242,13 @@ textarea {
   padding: 18px;
 }
 
-.preview-box video {
+.preview-box video,
+.preview-box .tcplayer {
   width: 100%;
+  border-radius: 16px;
+}
+
+.preview-box .vjs-tech {
   border-radius: 16px;
 }
 

@@ -2,13 +2,13 @@ import { createHmac, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
 const env = {
-  apiBase: process.env.TENCENT_API_BASE || "https://ivh.tencentcloudapi.com",
+  apiBase: process.env.TENCENT_API_BASE || "https://gw.tvs.qq.com",
   appKey: process.env.TENCENT_APP_KEY || "",
   accessToken: process.env.TENCENT_ACCESS_TOKEN || "",
   projectId: process.env.TENCENT_VIRTUALMAN_PROJECT_ID || "",
   region: process.env.TENCENT_REGION || "ap-guangzhou",
-  defaultProtocol: process.env.TENCENT_DEFAULT_PROTOCOL || "WEbrtc",
-  defaultDriverType: process.env.TENCENT_DEFAULT_DRIVER_TYPE || "TEXT",
+  defaultProtocol: process.env.TENCENT_DEFAULT_PROTOCOL || "webrtc",
+  defaultDriverType: process.env.TENCENT_DEFAULT_DRIVER_TYPE || "1",
   port: Number(process.env.PORT || 8787),
 };
 
@@ -125,7 +125,7 @@ async function handleCreateSession(body) {
     VirtualmanProjectId: body.projectId || env.projectId,
     UserId: body.userId || `demo-${Date.now()}`,
     Protocol: body.protocol || env.defaultProtocol,
-    DriverType: body.driverType || env.defaultDriverType,
+    DriverType: Number(body.driverType || env.defaultDriverType),
   });
 }
 
@@ -163,6 +163,57 @@ async function handleCloseSession(body) {
   });
 }
 
+async function handleListProjectSessions(body) {
+  return postTencent(
+    "/v2/ivh/sessionmanager/sessionmanagerservice/listsessionofprojectid",
+    {
+      ReqId: body.reqId || randomUUID().replaceAll("-", ""),
+      VirtualmanProjectId: body.projectId || env.projectId,
+    },
+  );
+}
+
+async function handleCloseAllSessions(body) {
+  const listResponse = await handleListProjectSessions(body);
+  const payload = listResponse?.Payload;
+  const candidates = [
+    ...(Array.isArray(payload?.SessionInfoList) ? payload.SessionInfoList : []),
+    ...(Array.isArray(payload?.SessionList) ? payload.SessionList : []),
+    ...(Array.isArray(payload?.Sessions) ? payload.Sessions : []),
+  ];
+
+  const sessionIds = candidates
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return "";
+      }
+
+      return item.SessionId || item.sessionId || "";
+    })
+    .filter((sessionId) => typeof sessionId === "string" && sessionId.length > 0);
+
+  const closed = [];
+  const failed = [];
+
+  for (const sessionId of sessionIds) {
+    try {
+      await handleCloseSession({ sessionId });
+      closed.push(sessionId);
+    } catch (error) {
+      failed.push({
+        sessionId,
+        error: extractTencentError(error),
+      });
+    }
+  }
+
+  return {
+    list: listResponse,
+    closed,
+    failed,
+  };
+}
+
 const routes = {
   "GET /api/config": async () => ({
     apiBase: env.apiBase,
@@ -177,6 +228,7 @@ const routes = {
   "POST /api/session/status": handleSessionStatus,
   "POST /api/session/command": handleSendText,
   "POST /api/session/close": handleCloseSession,
+  "POST /api/session/close-all": handleCloseAllSessions,
 };
 
 const server = createServer(async (request, response) => {

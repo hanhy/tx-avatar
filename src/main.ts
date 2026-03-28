@@ -1,5 +1,6 @@
 import "./style.css";
 import {
+  closeAllSessions,
   closeSession,
   createSession,
   getConfig,
@@ -18,6 +19,9 @@ type ViewState = {
   logs: string[];
   config?: DemoConfig;
 };
+
+const SESSION_STORAGE_KEY = "tx-avatar:known-session-ids";
+let tcPlayerInstance: TcPlayerInstance | null = null;
 
 const state: ViewState = {
   sessionId: "",
@@ -52,6 +56,64 @@ function getDriverTypeInput() {
 
 function getUserIdInput() {
   return document.querySelector<HTMLInputElement>("#user-id");
+}
+
+function loadKnownSessionIds() {
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function saveKnownSessionIds(sessionIds: string[]) {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify([...new Set(sessionIds)]));
+}
+
+function rememberSessionId(sessionId: string) {
+  if (!sessionId) {
+    return;
+  }
+
+  const knownSessionIds = loadKnownSessionIds();
+  saveKnownSessionIds([...knownSessionIds, sessionId]);
+}
+
+function forgetSessionId(sessionId: string) {
+  if (!sessionId) {
+    return;
+  }
+
+  const knownSessionIds = loadKnownSessionIds().filter((item) => item !== sessionId);
+  saveKnownSessionIds(knownSessionIds);
+}
+
+function clearCurrentSession() {
+  state.sessionId = "";
+  state.playStreamAddr = "";
+  state.sessionStatus = "idle";
+
+  const sessionIdInput = getSessionIdInput();
+  if (sessionIdInput) {
+    sessionIdInput.value = "";
+  }
+
+  renderSummary();
+}
+
+function destroyTcPlayer() {
+  tcPlayerInstance?.destroy?.();
+  tcPlayerInstance = null;
 }
 
 function renderConfig() {
@@ -103,10 +165,49 @@ function renderSummary() {
     return;
   }
 
-  const canPreview = /^https?:\/\//.test(state.playStreamAddr);
-  preview.innerHTML = canPreview
-    ? `<video controls playsinline src="${state.playStreamAddr}"></video>`
-    : `<p>腾讯接口返回的播放地址通常需要配合 WEbrtc/TRTC 或业务播放器使用。当前 demo 会展示地址，并在地址为 HTTP/HTTPS 时尝试直接预览。</p>`;
+  renderPlayer(preview, state.playStreamAddr);
+}
+
+function renderPlayer(preview: HTMLDivElement, streamUrl: string) {
+  destroyTcPlayer();
+
+  if (!streamUrl) {
+    preview.innerHTML =
+      "<p>创建并启动会话后，播放地址会显示在这里。拿到 webrtc:// 地址后，页面会优先尝试用腾讯播放器播放。</p>";
+    return;
+  }
+
+  if (!window.TCPlayer) {
+    preview.innerHTML = `<p>腾讯播放器脚本未成功加载。当前地址：${streamUrl}</p>`;
+    return;
+  }
+
+  preview.innerHTML =
+    '<video id="tc-player" class="video-js vjs-default-skin" playsinline controls muted></video>';
+
+  try {
+    tcPlayerInstance = window.TCPlayer("tc-player", {
+      sources: [
+        {
+          src: streamUrl,
+          type: streamUrl.startsWith("webrtc://") ? "video/webRTC" : "application/x-mpegURL",
+        },
+      ],
+      autoplay: true,
+      muted: true,
+      controls: true,
+      live: true,
+      fluid: true,
+      preload: "auto",
+      webrtcConfig: {
+        connectRetryLimit: 3,
+      },
+    });
+  } catch (error) {
+    preview.innerHTML = `<p>${
+      error instanceof Error ? error.message : "腾讯播放器初始化失败"
+    }。当前地址：${streamUrl}</p>`;
+  }
 }
 
 function renderLogs() {
@@ -119,15 +220,21 @@ function renderLogs() {
 }
 
 function updateSessionFromCreate(data: SessionCreateData) {
-  state.sessionId = data.Payload?.SessionId || "";
+  const sessionId = data.Payload?.SessionId || "";
+  if (!sessionId) {
+    throw new Error("创建会话成功响应里没有 SessionId");
+  }
+
+  state.sessionId = sessionId;
   state.playStreamAddr = data.Payload?.PlayStreamAddr || "";
-  state.sessionStatus = "created";
+  state.sessionStatus = `${data.Payload?.SessionStatus ?? "created"}`;
   getSessionIdInput()!.value = state.sessionId;
+  rememberSessionId(sessionId);
   renderSummary();
 }
 
 function updateSessionFromStatus(data: SessionStatusData) {
-  state.sessionStatus = data.Payload?.SessionStatus || "unknown";
+  state.sessionStatus = `${data.Payload?.SessionStatus ?? "unknown"}`;
   state.playStreamAddr = data.Payload?.PlayStreamAddr || state.playStreamAddr;
   renderSummary();
 }
@@ -136,11 +243,65 @@ async function bootstrap() {
   const config = await getConfig();
   state.config = config;
   renderConfig();
+  await cleanupSessionsOnServer();
+  await cleanupKnownSessions();
   addLog(
     config.missing.length
       ? `代理已启动，但还缺少配置：${config.missing.join(", ")}`
       : "代理配置完整，可以开始创建会话",
   );
+}
+
+async function cleanupSessionsOnServer() {
+  const result = await closeAllSessions();
+  const closedCount = result.closed?.length ?? 0;
+  const failedCount = result.failed?.length ?? 0;
+
+  if (closedCount === 0 && failedCount === 0) {
+    addLog("服务端未发现需要关闭的进行中会话");
+    return;
+  }
+
+  if (closedCount > 0) {
+    addLog(`服务端启动清理完成，已关闭 ${closedCount} 个会话`);
+  }
+
+  if (failedCount > 0) {
+    addLog(`服务端启动清理有 ${failedCount} 个会话关闭失败`);
+  }
+}
+
+async function cleanupKnownSessions() {
+  const knownSessionIds = loadKnownSessionIds();
+  if (knownSessionIds.length === 0) {
+    addLog("启动时未发现需要清理的旧会话");
+    return;
+  }
+
+  addLog(`启动时尝试清理 ${knownSessionIds.length} 个旧会话`);
+
+  const closedSessionIds: string[] = [];
+  const failedSessionIds: string[] = [];
+  for (const sessionId of knownSessionIds) {
+    try {
+      await closeSession(sessionId);
+      closedSessionIds.push(sessionId);
+    } catch (error) {
+      failedSessionIds.push(sessionId);
+      addLog(
+        error instanceof Error
+          ? `旧会话关闭失败：${sessionId} - ${error.message}`
+          : `旧会话关闭失败：${sessionId}`,
+      );
+    }
+  }
+
+  if (closedSessionIds.length > 0) {
+    addLog(`启动时已关闭旧会话：${closedSessionIds.join(", ")}`);
+  }
+
+  saveKnownSessionIds(failedSessionIds);
+  clearCurrentSession();
 }
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
@@ -165,16 +326,16 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           <label>
             <span>Protocol</span>
             <select id="protocol">
-              <option value="WEbrtc">WEbrtc</option>
-              <option value="RTMP">RTMP</option>
-              <option value="HLS">HLS</option>
+              <option value="webrtc">webrtc</option>
+              <option value="trtc">trtc</option>
+              <option value="rtmp">rtmp</option>
             </select>
           </label>
           <label>
             <span>DriverType</span>
             <select id="driver-type">
-              <option value="TEXT">TEXT</option>
-              <option value="CHAT">CHAT</option>
+              <option value="1">1 - 文本驱动</option>
+              <option value="3">3 - 语音驱动</option>
             </select>
           </label>
           <label>
@@ -299,6 +460,9 @@ document.querySelector<HTMLButtonElement>("#close-session")?.addEventListener("c
       throw new Error("缺少 SessionId");
     }
     await closeSession(sessionId);
+    forgetSessionId(sessionId);
+    destroyTcPlayer();
+    clearCurrentSession();
     state.sessionStatus = "closed";
     renderSummary();
     addLog(`会话已关闭：${sessionId}`);

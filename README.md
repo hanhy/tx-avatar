@@ -14,17 +14,18 @@
 - `TENCENT_APP_KEY`
 - `TENCENT_ACCESS_TOKEN`
 - `TENCENT_VIRTUALMAN_PROJECT_ID`
-- `TENCENT_API_BASE`，默认 `https://ivh.tencentcloudapi.com`
+- `TENCENT_API_BASE`，默认 `https://gw.tvs.qq.com`
 - `TENCENT_REGION`，默认 `ap-guangzhou`
-- `TENCENT_DEFAULT_PROTOCOL`，默认 `WEbrtc`
-- `TENCENT_DEFAULT_DRIVER_TYPE`，默认 `TEXT`
+- `TENCENT_DEFAULT_PROTOCOL`，默认 `webrtc`
+- `TENCENT_DEFAULT_DRIVER_TYPE`，默认 `1`
 - `PORT`，默认 `8787`
 
 其中：
 
 - `TENCENT_APP_KEY` 和 `TENCENT_ACCESS_TOKEN` 用于接口签名
 - `TENCENT_VIRTUALMAN_PROJECT_ID` 是你在腾讯云数智人平台里的项目 ID
-- `TENCENT_DEFAULT_PROTOCOL` 常见可选值是 `WEbrtc`、`RTMP`、`HLS`
+- `TENCENT_DEFAULT_PROTOCOL` 常见可选值是 `webrtc`、`trtc`、`rtmp`
+- `TENCENT_DEFAULT_DRIVER_TYPE` 常见值是 `1`（文本驱动）和 `3`（语音驱动）
 
 这些值只会注入到当前启动进程，不会写入仓库文件，也不会提交到 GitHub。
 
@@ -86,5 +87,6 @@ npm run dev
 ## 6. 限制说明
 
 - 这里实现的是“真实接口调用 demo”，不是官方播放器 SDK 的完整封装
-- 如果你要在页面里直接播放 `WEbrtc/TRTC` 画面，还需要接入腾讯返回协议对应的播放 SDK
+- 页面已经集成 `TCPlayer`，会对 `webrtc://...` 地址自动尝试播放
+- 如果播放器初始化失败，通常需要确认浏览器环境，以及 `TCPlayer` 所需 License / 播放域名配置
 - 如果你有腾讯官方前端播放器 SDK 名称或示例链接，我可以继续把这一层也补上

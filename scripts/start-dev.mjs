@@ -3,10 +3,10 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
 const defaults = {
-  TENCENT_API_BASE: "https://ivh.tencentcloudapi.com",
+  TENCENT_API_BASE: "https://gw.tvs.qq.com",
   TENCENT_REGION: "ap-guangzhou",
-  TENCENT_DEFAULT_PROTOCOL: "WEbrtc",
-  TENCENT_DEFAULT_DRIVER_TYPE: "TEXT",
+  TENCENT_DEFAULT_PROTOCOL: "webrtc",
+  TENCENT_DEFAULT_DRIVER_TYPE: "1",
   PORT: "8787",
 };
 
