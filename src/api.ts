@@ -43,6 +43,21 @@ export type SessionStatusData = {
   };
 };
 
+export type StreamStatusData = {
+  Header?: {
+    Code?: number;
+    Message?: string;
+    RequestID?: string;
+  };
+  Payload?: {
+    SessionStatus?: string | number;
+    PlayStreamAddr?: string;
+    ReqId?: string;
+    ErrorCode?: number;
+    ErrorMessage?: string;
+  };
+};
+
 export type CloseAllSessionsData = {
   list?: unknown;
   closed?: string[];
@@ -115,6 +130,13 @@ export function startSession(sessionId: string) {
 
 export function getSessionStatus(sessionId: string) {
   return request<SessionStatusData>("/api/session/status", {
+    method: "POST",
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+export function getStreamStatus(sessionId: string) {
+  return request<StreamStatusData>("/api/stream/status", {
     method: "POST",
     body: JSON.stringify({ sessionId }),
   });

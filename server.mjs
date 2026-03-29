@@ -143,6 +143,13 @@ async function handleSessionStatus(body) {
   });
 }
 
+async function handleStreamStatus(body) {
+  return postTencent("/v2/ivh/streammanager/streamservice/statsession", {
+    ReqId: body.reqId || randomUUID().replaceAll("-", ""),
+    SessionId: body.sessionId,
+  });
+}
+
 async function handleSendText(body) {
   return postTencent("/v2/ivh/interactdriver/interactdriverservice/command", {
     ReqId: body.reqId || randomUUID().replaceAll("-", ""),
@@ -226,6 +233,7 @@ const routes = {
   "POST /api/session/create": handleCreateSession,
   "POST /api/session/start": handleStartSession,
   "POST /api/session/status": handleSessionStatus,
+  "POST /api/stream/status": handleStreamStatus,
   "POST /api/session/command": handleSendText,
   "POST /api/session/close": handleCloseSession,
   "POST /api/session/close-all": handleCloseAllSessions,

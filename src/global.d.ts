@@ -1,5 +1,8 @@
 interface TcPlayerInstance {
-  destroy?: () => void;
+  dispose?: () => void;
+  play?: () => void | Promise<void>;
+  on?: (event: string, handler: (payload?: unknown) => void) => void;
+  ready?: (handler: () => void) => void;
 }
 
 interface TcPlayerFactory {
@@ -18,6 +21,7 @@ interface TcPlayerFactory {
       preload?: string;
       webrtcConfig?: {
         connectRetryLimit?: number;
+        debugLog?: boolean;
       };
     },
   ): TcPlayerInstance;

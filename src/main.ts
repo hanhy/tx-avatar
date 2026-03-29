@@ -5,11 +5,13 @@ import {
   createSession,
   getConfig,
   getSessionStatus,
+  getStreamStatus,
   sendText,
   startSession,
   type DemoConfig,
   type SessionCreateData,
   type SessionStatusData,
+  type StreamStatusData,
 } from "./api";
 
 type ViewState = {
@@ -21,7 +23,13 @@ type ViewState = {
 };
 
 const SESSION_STORAGE_KEY = "tx-avatar:known-session-ids";
+const READY_SESSION_STATUS = "1";
+const FAILED_STREAM_STATUS = "4";
+const TIMED_OUT_STREAM_STATUS = "5";
+const SESSION_READY_TIMEOUT_MS = 20_000;
+const SESSION_READY_POLL_MS = 1_000;
 let tcPlayerInstance: TcPlayerInstance | null = null;
+let renderedStreamUrl = "";
 
 const state: ViewState = {
   sessionId: "",
@@ -35,7 +43,6 @@ function addLog(message: string) {
   state.logs.unshift(`[${time}] ${message}`);
   state.logs = state.logs.slice(0, 8);
   renderLogs();
-  renderSummary();
 }
 
 function getSessionIdInput() {
@@ -102,6 +109,7 @@ function clearCurrentSession() {
   state.sessionId = "";
   state.playStreamAddr = "";
   state.sessionStatus = "idle";
+  renderedStreamUrl = "";
 
   const sessionIdInput = getSessionIdInput();
   if (sessionIdInput) {
@@ -112,7 +120,7 @@ function clearCurrentSession() {
 }
 
 function destroyTcPlayer() {
-  tcPlayerInstance?.destroy?.();
+  tcPlayerInstance?.dispose?.();
   tcPlayerInstance = null;
 }
 
@@ -169,7 +177,12 @@ function renderSummary() {
 }
 
 function renderPlayer(preview: HTMLDivElement, streamUrl: string) {
+  if (streamUrl === renderedStreamUrl && tcPlayerInstance) {
+    return;
+  }
+
   destroyTcPlayer();
+  renderedStreamUrl = streamUrl;
 
   if (!streamUrl) {
     preview.innerHTML =
@@ -201,7 +214,44 @@ function renderPlayer(preview: HTMLDivElement, streamUrl: string) {
       preload: "auto",
       webrtcConfig: {
         connectRetryLimit: 3,
+        debugLog: true,
       },
+    });
+
+    const player = tcPlayerInstance;
+    const playerEvents = [
+      "play",
+      "playing",
+      "canplay",
+      "loadedmetadata",
+      "error",
+      "webrtcwaitstart",
+      "webrtcwaitend",
+      "webrtcstop",
+    ];
+
+    for (const eventName of playerEvents) {
+      player.on?.(eventName, (payload) => {
+        addLog(
+          `播放器事件：${eventName}${
+            payload ? ` ${JSON.stringify(payload).slice(0, 180)}` : ""
+          }`,
+        );
+      });
+    }
+
+    player.ready?.(() => {
+      addLog("播放器初始化完成，开始尝试播放");
+      try {
+        const playResult = player.play?.();
+        if (playResult && typeof (playResult as Promise<void>).catch === "function") {
+          void (playResult as Promise<void>).catch((error) => {
+            addLog(error instanceof Error ? `播放器 play() 失败：${error.message}` : "播放器 play() 失败");
+          });
+        }
+      } catch (error) {
+        addLog(error instanceof Error ? `播放器启动失败：${error.message}` : "播放器启动失败");
+      }
     });
   } catch (error) {
     preview.innerHTML = `<p>${
@@ -237,6 +287,63 @@ function updateSessionFromStatus(data: SessionStatusData) {
   state.sessionStatus = `${data.Payload?.SessionStatus ?? "unknown"}`;
   state.playStreamAddr = data.Payload?.PlayStreamAddr || state.playStreamAddr;
   renderSummary();
+}
+
+function updateStreamFromStatus(data: StreamStatusData) {
+  state.sessionStatus = `${data.Payload?.SessionStatus ?? state.sessionStatus ?? "unknown"}`;
+  state.playStreamAddr = data.Payload?.PlayStreamAddr || state.playStreamAddr;
+  renderSummary();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function waitForSessionReady(sessionId: string) {
+  const startedAt = Date.now();
+  let lastKnownStatus = state.sessionStatus;
+
+  while (Date.now() - startedAt < SESSION_READY_TIMEOUT_MS) {
+    const data = await getSessionStatus(sessionId);
+    updateSessionFromStatus(data);
+    lastKnownStatus = `${data.Payload?.SessionStatus ?? "unknown"}`;
+
+    if (lastKnownStatus === READY_SESSION_STATUS) {
+      return data;
+    }
+
+    await sleep(SESSION_READY_POLL_MS);
+  }
+
+  throw new Error(`会话在 ${SESSION_READY_TIMEOUT_MS / 1000} 秒内未就绪，当前状态：${lastKnownStatus}`);
+}
+
+async function waitForStreamReady(sessionId: string) {
+  const startedAt = Date.now();
+  let lastKnownStatus = state.sessionStatus;
+
+  while (Date.now() - startedAt < SESSION_READY_TIMEOUT_MS) {
+    const data = await getStreamStatus(sessionId);
+    updateStreamFromStatus(data);
+    lastKnownStatus = `${data.Payload?.SessionStatus ?? "unknown"}`;
+
+    if (lastKnownStatus === READY_SESSION_STATUS) {
+      return data;
+    }
+
+    if (lastKnownStatus === FAILED_STREAM_STATUS || lastKnownStatus === TIMED_OUT_STREAM_STATUS) {
+      throw new Error(
+        data.Payload?.ErrorMessage ||
+          `流状态异常：${lastKnownStatus}，错误码：${data.Payload?.ErrorCode ?? "unknown"}`,
+      );
+    }
+
+    await sleep(SESSION_READY_POLL_MS);
+  }
+
+  throw new Error(`流在 ${SESSION_READY_TIMEOUT_MS / 1000} 秒内未就绪，当前状态：${lastKnownStatus}`);
 }
 
 async function bootstrap() {
@@ -410,7 +517,12 @@ document.querySelector<HTMLButtonElement>("#start-session")?.addEventListener("c
     if (!sessionId) {
       throw new Error("请先创建会话");
     }
+
+    addLog(`等待会话就绪：${sessionId}`);
+    await waitForSessionReady(sessionId);
     await startSession(sessionId);
+    addLog(`等待流就绪：${sessionId}`);
+    await waitForStreamReady(sessionId);
     state.sessionStatus = "started";
     renderSummary();
     addLog(`会话已启动：${sessionId}`);
@@ -446,6 +558,8 @@ document.querySelector<HTMLButtonElement>("#send-text")?.addEventListener("click
       throw new Error("请输入播报文本，或至少启用打断");
     }
 
+    await waitForSessionReady(sessionId);
+    await waitForStreamReady(sessionId);
     await sendText(sessionId, text, interrupt);
     addLog(`文本指令已发送：${text || "Interrupt only"}`);
   } catch (error) {
