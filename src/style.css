@@ -118,6 +118,66 @@ h2 {
   margin-top: 18px;
 }
 
+.stage {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.stage-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.preview-stage {
+  width: 100%;
+  min-width: 0;
+}
+
+.preview-box-stage {
+  height: clamp(420px, 46vw, 620px);
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.dock-card {
+  min-height: 100%;
+  min-width: 0;
+}
+
+.answer-card {
+  align-self: stretch;
+}
+
+.script-bar {
+  width: 100%;
+}
+
+.script-bar-content {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.4fr) auto;
+  gap: 18px;
+  align-items: end;
+}
+
+.script-bar-main {
+  min-width: 0;
+}
+
+.script-question-box {
+  margin: 0;
+}
+
+.script-actions {
+  margin-top: 0;
+  align-self: center;
+}
+
 .card {
   border-radius: 24px;
   padding: 24px;
@@ -240,21 +300,79 @@ textarea {
     linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
     rgba(255, 255, 255, 0.02);
   padding: 18px;
+  overflow: hidden;
 }
 
 .preview-box video,
 .preview-box .tcplayer {
   width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   border-radius: 16px;
 }
 
+.preview-box .video-js,
+.preview-box .vcp-player {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
 .preview-box .vjs-tech {
+  width: 100% !important;
+  height: 100% !important;
   border-radius: 16px;
 }
 
 .preview-box p {
   color: rgba(246, 241, 233, 0.76);
   line-height: 1.7;
+}
+
+.helper-text {
+  color: rgba(246, 241, 233, 0.72);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.question-box {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.question-box span {
+  color: rgba(246, 241, 233, 0.72);
+  font-size: 14px;
+}
+
+.question-box div {
+  min-height: 84px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  line-height: 1.7;
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.history-list li {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(246, 241, 233, 0.84);
+  line-height: 1.6;
 }
 
 .log-list {
@@ -271,6 +389,8 @@ textarea {
 
 @media (max-width: 860px) {
   .summary-grid,
+  .stage-main,
+  .script-bar-content,
   .workspace,
   .field-grid {
     grid-template-columns: 1fr;
@@ -278,5 +398,10 @@ textarea {
 
   .summary-card.wide {
     grid-column: auto;
+  }
+
+  .preview-box-stage {
+    height: 320px;
+    min-height: 280px;
   }
 }

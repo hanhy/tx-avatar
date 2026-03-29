@@ -19,6 +19,9 @@ type ViewState = {
   playStreamAddr: string;
   sessionStatus: string;
   logs: string[];
+  interviewLines: string[];
+  interviewIndex: number;
+  interviewHistory: string[];
   config?: DemoConfig;
 };
 
@@ -36,6 +39,9 @@ const state: ViewState = {
   playStreamAddr: "",
   sessionStatus: "idle",
   logs: ["等待加载配置"],
+  interviewLines: [],
+  interviewIndex: -1,
+  interviewHistory: [],
 };
 
 function addLog(message: string) {
@@ -63,6 +69,14 @@ function getDriverTypeInput() {
 
 function getUserIdInput() {
   return document.querySelector<HTMLInputElement>("#user-id");
+}
+
+function getInterviewFileInput() {
+  return document.querySelector<HTMLInputElement>("#interview-file");
+}
+
+function getCandidateAnswerInput() {
+  return document.querySelector<HTMLTextAreaElement>("#candidate-answer");
 }
 
 function loadKnownSessionIds() {
@@ -269,6 +283,95 @@ function renderLogs() {
   root.innerHTML = state.logs.map((item) => `<li>${item}</li>`).join("");
 }
 
+function renderInterviewState() {
+  const scriptMeta = document.querySelector<HTMLParagraphElement>("#script-meta");
+  if (scriptMeta) {
+    scriptMeta.textContent = state.interviewLines.length
+      ? `已加载 ${state.interviewLines.length} 条主考官话术，当前进度 ${Math.max(state.interviewIndex + 1, 0)}/${state.interviewLines.length}`
+      : "尚未加载面试脚本";
+  }
+
+  const currentQuestion = document.querySelector<HTMLDivElement>("#current-question");
+  if (currentQuestion) {
+    currentQuestion.textContent =
+      state.interviewIndex >= 0 && state.interviewIndex < state.interviewLines.length
+        ? state.interviewLines[state.interviewIndex]
+        : "点击“开始面试”后，这里会显示当前主考官题目。";
+  }
+
+  const history = document.querySelector<HTMLUListElement>("#interview-history");
+  if (history) {
+    history.innerHTML = state.interviewHistory.length
+      ? state.interviewHistory.map((item) => `<li>${item}</li>`).join("")
+      : "<li>尚无面试对话记录</li>";
+  }
+}
+
+function normalizeInterviewLine(line: string) {
+  return line.replace(/^主考官[:：]\s*/, "").trim();
+}
+
+function parseInterviewScript(content: string) {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("主考官：") || line.startsWith("主考官:"))
+    .map(normalizeInterviewLine)
+    .filter((line) => line.length > 0);
+}
+
+async function speakAsExaminer(text: string) {
+  const sessionId = getSessionIdInput()?.value.trim() || state.sessionId;
+  if (!sessionId) {
+    throw new Error("请先创建并启动会话");
+  }
+
+  await waitForSessionReady(sessionId);
+  await waitForStreamReady(sessionId);
+  await sendText(sessionId, text, false);
+  addLog(`主考官播报：${text}`);
+}
+
+async function advanceInterview(afterAnswer: boolean) {
+  if (state.interviewLines.length === 0) {
+    throw new Error("请先加载面试脚本");
+  }
+
+  if (afterAnswer) {
+    const answerInput = getCandidateAnswerInput();
+    const answer = answerInput?.value.trim() || "";
+    if (!answer) {
+      throw new Error("请先填写考生回答");
+    }
+
+    const nextIndex = state.interviewIndex + 1;
+    state.interviewHistory.push(`考生：${answer}`);
+    answerInput!.value = "";
+
+    if (nextIndex >= state.interviewLines.length) {
+      await speakAsExaminer("好的，本轮面试到这里结束。");
+      state.interviewHistory.push("主考官：好的，本轮面试到这里结束。");
+      state.interviewIndex = state.interviewLines.length;
+      renderInterviewState();
+      return;
+    }
+
+    const nextQuestion = state.interviewLines[nextIndex];
+    await speakAsExaminer(`好的。${nextQuestion}`);
+    state.interviewHistory.push(`主考官：好的。${nextQuestion}`);
+    state.interviewIndex = nextIndex;
+    renderInterviewState();
+    return;
+  }
+
+  const firstIndex = 0;
+  const firstQuestion = state.interviewLines[firstIndex];
+  await speakAsExaminer(firstQuestion);
+  state.interviewHistory.push(`主考官：${firstQuestion}`);
+  state.interviewIndex = firstIndex;
+  renderInterviewState();
+}
+
 function updateSessionFromCreate(data: SessionCreateData) {
   const sessionId = data.Payload?.SessionId || "";
   if (!sessionId) {
@@ -422,6 +525,53 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div id="session-summary" class="summary-grid"></div>
     </section>
 
+    <section class="stage">
+      <div class="stage-main">
+        <article class="card preview-stage">
+          <h2>播放预览</h2>
+          <div id="stream-preview" class="preview-box preview-box-stage"></div>
+        </article>
+
+        <article class="card dock-card answer-card">
+          <h2>考生回答</h2>
+          <label class="stack">
+            <span>回答内容</span>
+            <textarea
+              id="candidate-answer"
+              rows="6"
+              placeholder="主考官提问后，在这里填写考生回答。"
+            ></textarea>
+          </label>
+          <div class="actions">
+            <button id="submit-answer" class="secondary">提交回答并下一题</button>
+          </div>
+          <ul id="interview-history" class="history-list">
+            <li>尚无面试对话记录</li>
+          </ul>
+        </article>
+      </div>
+
+      <article class="card script-bar">
+        <h2>面试脚本</h2>
+        <div class="script-bar-content">
+          <div class="script-bar-main">
+            <p id="script-meta" class="helper-text">尚未加载面试脚本</p>
+            <label class="stack">
+              <span>导入话术脚本 TXT</span>
+              <input id="interview-file" type="file" accept=".txt,text/plain" />
+            </label>
+          </div>
+          <div class="question-box script-question-box">
+            <span>当前题目</span>
+            <div id="current-question">点击“开始面试”后，这里会显示当前主考官题目。</div>
+          </div>
+          <div class="actions script-actions">
+            <button id="start-interview" class="primary">开始面试</button>
+          </div>
+        </div>
+      </article>
+    </section>
+
     <section class="workspace">
       <article class="card">
         <h2>创建会话</h2>
@@ -478,11 +628,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <ul id="config-list" class="kv-list"></ul>
       </article>
 
-      <article class="card">
-        <h2>播放预览</h2>
-        <div id="stream-preview" class="preview-box"></div>
-      </article>
-
       <article class="card wide-card">
         <h2>运行日志</h2>
         <ul id="log-list" class="log-list"></ul>
@@ -493,8 +638,32 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 
 renderSummary();
 renderLogs();
+renderInterviewState();
 bootstrap().catch((error) => {
   addLog(error instanceof Error ? error.message : "配置加载失败");
+});
+
+getInterviewFileInput()?.addEventListener("change", async (event) => {
+  try {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const content = await file.text();
+    const interviewLines = parseInterviewScript(content);
+    if (interviewLines.length === 0) {
+      throw new Error("脚本里没有识别到“主考官：xxx”格式的话术");
+    }
+
+    state.interviewLines = interviewLines;
+    state.interviewIndex = -1;
+    state.interviewHistory = [];
+    renderInterviewState();
+    addLog(`面试脚本加载成功，共 ${interviewLines.length} 条话术`);
+  } catch (error) {
+    addLog(error instanceof Error ? `脚本加载失败：${error.message}` : "脚本加载失败");
+  }
 });
 
 document.querySelector<HTMLButtonElement>("#create-session")?.addEventListener("click", async () => {
@@ -582,5 +751,32 @@ document.querySelector<HTMLButtonElement>("#close-session")?.addEventListener("c
     addLog(`会话已关闭：${sessionId}`);
   } catch (error) {
     addLog(error instanceof Error ? `关闭失败：${error.message}` : "关闭失败");
+  }
+});
+
+document.querySelector<HTMLButtonElement>("#start-interview")?.addEventListener("click", async () => {
+  try {
+    if (state.interviewLines.length === 0) {
+      throw new Error("请先加载面试脚本");
+    }
+
+    state.interviewIndex = -1;
+    state.interviewHistory = [];
+    renderInterviewState();
+    await advanceInterview(false);
+  } catch (error) {
+    addLog(error instanceof Error ? `开始面试失败：${error.message}` : "开始面试失败");
+  }
+});
+
+document.querySelector<HTMLButtonElement>("#submit-answer")?.addEventListener("click", async () => {
+  try {
+    if (state.interviewIndex < 0) {
+      throw new Error("请先点击“开始面试”");
+    }
+
+    await advanceInterview(true);
+  } catch (error) {
+    addLog(error instanceof Error ? `提交回答失败：${error.message}` : "提交回答失败");
   }
 });
