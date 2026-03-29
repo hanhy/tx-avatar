@@ -623,11 +623,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         </div>
       </article>
 
-      <article class="card">
-        <h2>代理配置</h2>
-        <ul id="config-list" class="kv-list"></ul>
-      </article>
-
       <article class="card wide-card">
         <h2>运行日志</h2>
         <ul id="log-list" class="log-list"></ul>
