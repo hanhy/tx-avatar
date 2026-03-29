@@ -534,20 +534,22 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 
         <article class="card dock-card answer-card">
           <h2>考生回答</h2>
-          <label class="stack">
-            <span>回答内容</span>
-            <textarea
-              id="candidate-answer"
-              rows="6"
-              placeholder="主考官提问后，在这里填写考生回答。"
-            ></textarea>
-          </label>
-          <div class="actions">
-            <button id="submit-answer" class="secondary">提交回答并下一题</button>
+          <div class="answer-panel">
+            <label class="stack">
+              <span>回答内容</span>
+              <textarea
+                id="candidate-answer"
+                rows="6"
+                placeholder="主考官提问后，在这里填写考生回答。"
+              ></textarea>
+            </label>
+            <div class="actions">
+              <button id="submit-answer" class="secondary">提交回答并下一题</button>
+            </div>
+            <ul id="interview-history" class="history-list">
+              <li>尚无面试对话记录</li>
+            </ul>
           </div>
-          <ul id="interview-history" class="history-list">
-            <li>尚无面试对话记录</li>
-          </ul>
         </article>
       </div>
 

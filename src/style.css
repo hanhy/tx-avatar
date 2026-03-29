@@ -152,6 +152,24 @@ h2 {
 
 .answer-card {
   align-self: stretch;
+  height: clamp(420px, 46vw, 620px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.answer-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 16px;
+  flex: 1;
+}
+
+.answer-card textarea {
+  min-height: 140px;
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .script-bar {
@@ -365,6 +383,9 @@ textarea {
   margin: 18px 0 0;
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .history-list li {
@@ -403,5 +424,9 @@ textarea {
   .preview-box-stage {
     height: 320px;
     min-height: 280px;
+  }
+
+  .answer-card {
+    height: auto;
   }
 }
