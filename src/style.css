@@ -172,6 +172,10 @@ h2 {
   overflow-y: auto;
 }
 
+.answer-card .actions {
+  align-items: center;
+}
+
 .script-bar {
   width: 100%;
 }

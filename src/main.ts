@@ -33,6 +33,8 @@ const SESSION_READY_TIMEOUT_MS = 20_000;
 const SESSION_READY_POLL_MS = 1_000;
 let tcPlayerInstance: TcPlayerInstance | null = null;
 let renderedStreamUrl = "";
+let speechRecognition: SpeechRecognition | null = null;
+let isVoiceInputActive = false;
 
 const state: ViewState = {
   sessionId: "",
@@ -77,6 +79,10 @@ function getInterviewFileInput() {
 
 function getCandidateAnswerInput() {
   return document.querySelector<HTMLTextAreaElement>("#candidate-answer");
+}
+
+function getVoiceInputButton() {
+  return document.querySelector<HTMLButtonElement>("#voice-answer");
 }
 
 function loadKnownSessionIds() {
@@ -305,6 +311,12 @@ function renderInterviewState() {
       ? state.interviewHistory.map((item) => `<li>${item}</li>`).join("")
       : "<li>尚无面试对话记录</li>";
   }
+
+  const voiceButton = getVoiceInputButton();
+  if (voiceButton) {
+    voiceButton.textContent = isVoiceInputActive ? "语音输入中..." : "语音输入";
+    voiceButton.disabled = false;
+  }
 }
 
 function normalizeInterviewLine(line: string) {
@@ -370,6 +382,95 @@ async function advanceInterview(afterAnswer: boolean) {
   state.interviewHistory.push(`主考官：${firstQuestion}`);
   state.interviewIndex = firstIndex;
   renderInterviewState();
+}
+
+async function submitCandidateAnswer() {
+  if (state.interviewIndex < 0) {
+    throw new Error("请先点击“开始面试”");
+  }
+
+  await advanceInterview(true);
+}
+
+function getSpeechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function stopVoiceInput() {
+  if (!speechRecognition) {
+    isVoiceInputActive = false;
+    renderInterviewState();
+    return;
+  }
+
+  speechRecognition.stop();
+}
+
+function startVoiceInput() {
+  const SpeechRecognitionCtor = getSpeechRecognitionConstructor();
+  if (!SpeechRecognitionCtor) {
+    throw new Error("当前浏览器不支持语音识别，请改用 Chrome 并允许麦克风权限");
+  }
+
+  const answerInput = getCandidateAnswerInput();
+  if (!answerInput) {
+    throw new Error("未找到考生回答输入框");
+  }
+
+  if (isVoiceInputActive) {
+    stopVoiceInput();
+    return;
+  }
+
+  let finalTranscript = "";
+  speechRecognition = new SpeechRecognitionCtor();
+  speechRecognition.lang = "zh-CN";
+  speechRecognition.continuous = false;
+  speechRecognition.interimResults = true;
+
+  isVoiceInputActive = true;
+  renderInterviewState();
+  addLog("语音输入已开始，请开始回答");
+
+  speechRecognition.onresult = (event) => {
+    let interimTranscript = "";
+
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const result = event.results[index];
+      const transcript = result[0]?.transcript ?? "";
+      if (result.isFinal) {
+        finalTranscript += transcript;
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+
+    answerInput.value = (finalTranscript + interimTranscript).trim();
+  };
+
+  speechRecognition.onerror = (event) => {
+    addLog(`语音输入失败：${event.error || event.message || "unknown"}`);
+  };
+
+  speechRecognition.onend = () => {
+    const transcript = answerInput.value.trim();
+    const shouldSubmit = Boolean(finalTranscript.trim() || transcript);
+    isVoiceInputActive = false;
+    renderInterviewState();
+    speechRecognition = null;
+
+    if (!shouldSubmit) {
+      addLog("语音输入结束，但没有识别到有效内容");
+      return;
+    }
+
+    addLog(`语音识别完成：${transcript}`);
+    void submitCandidateAnswer().catch((error) => {
+      addLog(error instanceof Error ? `语音提交流程失败：${error.message}` : "语音提交流程失败");
+    });
+  };
+
+  speechRecognition.start();
 }
 
 function updateSessionFromCreate(data: SessionCreateData) {
@@ -544,6 +645,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
               ></textarea>
             </label>
             <div class="actions">
+              <button id="voice-answer" class="ghost" type="button">语音输入</button>
               <button id="submit-answer" class="secondary">提交回答并下一题</button>
             </div>
             <ul id="interview-history" class="history-list">
@@ -768,12 +870,16 @@ document.querySelector<HTMLButtonElement>("#start-interview")?.addEventListener(
 
 document.querySelector<HTMLButtonElement>("#submit-answer")?.addEventListener("click", async () => {
   try {
-    if (state.interviewIndex < 0) {
-      throw new Error("请先点击“开始面试”");
-    }
-
-    await advanceInterview(true);
+    await submitCandidateAnswer();
   } catch (error) {
     addLog(error instanceof Error ? `提交回答失败：${error.message}` : "提交回答失败");
+  }
+});
+
+document.querySelector<HTMLButtonElement>("#voice-answer")?.addEventListener("click", () => {
+  try {
+    startVoiceInput();
+  } catch (error) {
+    addLog(error instanceof Error ? `语音输入不可用：${error.message}` : "语音输入不可用");
   }
 });
