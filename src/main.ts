@@ -85,6 +85,14 @@ function getVoiceInputButton() {
   return document.querySelector<HTMLButtonElement>("#voice-answer");
 }
 
+function getPreviewStage() {
+  return document.querySelector<HTMLElement>("#preview-stage");
+}
+
+function getFullscreenButton() {
+  return document.querySelector<HTMLButtonElement>("#toggle-fullscreen");
+}
+
 function loadKnownSessionIds() {
   try {
     const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -317,6 +325,29 @@ function renderInterviewState() {
     voiceButton.textContent = isVoiceInputActive ? "语音输入中..." : "语音输入";
     voiceButton.disabled = false;
   }
+}
+
+function renderFullscreenButton() {
+  const fullscreenButton = getFullscreenButton();
+  if (!fullscreenButton) {
+    return;
+  }
+
+  fullscreenButton.textContent = document.fullscreenElement ? "退出全屏" : "全屏预览";
+}
+
+async function togglePreviewFullscreen() {
+  const previewStage = getPreviewStage();
+  if (!previewStage) {
+    throw new Error("未找到播放预览容器");
+  }
+
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+    return;
+  }
+
+  await previewStage.requestFullscreen();
 }
 
 function normalizeInterviewLine(line: string) {
@@ -628,8 +659,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 
     <section class="stage">
       <div class="stage-main">
-        <article class="card preview-stage">
-          <h2>播放预览</h2>
+        <article id="preview-stage" class="card preview-stage">
+          <div class="card-header">
+            <h2>播放预览</h2>
+            <button id="toggle-fullscreen" class="ghost" type="button">全屏预览</button>
+          </div>
           <div id="stream-preview" class="preview-box preview-box-stage"></div>
         </article>
 
@@ -738,8 +772,13 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 renderSummary();
 renderLogs();
 renderInterviewState();
+renderFullscreenButton();
 bootstrap().catch((error) => {
   addLog(error instanceof Error ? error.message : "配置加载失败");
+});
+
+document.addEventListener("fullscreenchange", () => {
+  renderFullscreenButton();
 });
 
 getInterviewFileInput()?.addEventListener("change", async (event) => {
@@ -882,4 +921,10 @@ document.querySelector<HTMLButtonElement>("#voice-answer")?.addEventListener("cl
   } catch (error) {
     addLog(error instanceof Error ? `语音输入不可用：${error.message}` : "语音输入不可用");
   }
+});
+
+document.querySelector<HTMLButtonElement>("#toggle-fullscreen")?.addEventListener("click", () => {
+  void togglePreviewFullscreen().catch((error) => {
+    addLog(error instanceof Error ? `全屏切换失败：${error.message}` : "全屏切换失败");
+  });
 });
