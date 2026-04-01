@@ -35,6 +35,8 @@ let tcPlayerInstance: TcPlayerInstance | null = null;
 let renderedStreamUrl = "";
 let speechRecognition: SpeechRecognition | null = null;
 let isVoiceInputActive = false;
+let previewTimerStartedAt = 0;
+let previewTimerIntervalId: number | null = null;
 
 const state: ViewState = {
   sessionId: "",
@@ -93,6 +95,10 @@ function getFullscreenButton() {
   return document.querySelector<HTMLButtonElement>("#toggle-fullscreen");
 }
 
+function getPreviewTimer() {
+  return document.querySelector<HTMLDivElement>("#preview-timer");
+}
+
 function loadKnownSessionIds() {
   try {
     const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -138,6 +144,7 @@ function clearCurrentSession() {
   state.playStreamAddr = "";
   state.sessionStatus = "idle";
   renderedStreamUrl = "";
+  stopPreviewTimer();
 
   const sessionIdInput = getSessionIdInput();
   if (sessionIdInput) {
@@ -334,6 +341,52 @@ function renderFullscreenButton() {
   }
 
   fullscreenButton.textContent = document.fullscreenElement ? "退出全屏" : "全屏预览";
+}
+
+function formatElapsed(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  return [hours, minutes, remainingSeconds]
+    .map((value) => value.toString().padStart(2, "0"))
+    .join(":");
+}
+
+function renderPreviewTimer() {
+  const timer = getPreviewTimer();
+  if (!timer) {
+    return;
+  }
+
+  const elapsedSeconds = previewTimerStartedAt
+    ? Math.max(0, Math.floor((Date.now() - previewTimerStartedAt) / 1000))
+    : 0;
+
+  timer.classList.toggle("is-running", Boolean(previewTimerStartedAt));
+  timer.querySelector("span")!.textContent = formatElapsed(elapsedSeconds);
+}
+
+function startPreviewTimer() {
+  previewTimerStartedAt = Date.now();
+  if (previewTimerIntervalId !== null) {
+    window.clearInterval(previewTimerIntervalId);
+  }
+
+  renderPreviewTimer();
+  previewTimerIntervalId = window.setInterval(() => {
+    renderPreviewTimer();
+  }, 1000);
+}
+
+function stopPreviewTimer() {
+  previewTimerStartedAt = 0;
+  if (previewTimerIntervalId !== null) {
+    window.clearInterval(previewTimerIntervalId);
+    previewTimerIntervalId = null;
+  }
+
+  renderPreviewTimer();
 }
 
 async function togglePreviewFullscreen() {
@@ -664,6 +717,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
             <h2>播放预览</h2>
             <button id="toggle-fullscreen" class="ghost" type="button">全屏预览</button>
           </div>
+          <div id="preview-timer" class="preview-timer">
+            <i></i>
+            <span>00:00:00</span>
+          </div>
           <div id="stream-preview" class="preview-box preview-box-stage"></div>
         </article>
 
@@ -773,6 +830,7 @@ renderSummary();
 renderLogs();
 renderInterviewState();
 renderFullscreenButton();
+renderPreviewTimer();
 bootstrap().catch((error) => {
   addLog(error instanceof Error ? error.message : "配置加载失败");
 });
@@ -831,6 +889,7 @@ document.querySelector<HTMLButtonElement>("#start-session")?.addEventListener("c
     addLog(`等待流就绪：${sessionId}`);
     await waitForStreamReady(sessionId);
     state.sessionStatus = "started";
+    startPreviewTimer();
     renderSummary();
     addLog(`会话已启动：${sessionId}`);
   } catch (error) {

@@ -134,6 +134,7 @@ h2 {
 .preview-stage {
   width: 100%;
   min-width: 0;
+  position: relative;
 }
 
 .card-header {
@@ -157,6 +158,40 @@ h2 {
   padding: 0;
 }
 
+.preview-timer {
+  position: absolute;
+  top: 72px;
+  left: 24px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(7, 9, 13, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(246, 241, 233, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.preview-timer i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #7a7f87;
+  box-shadow: 0 0 0 0 rgba(255, 87, 87, 0);
+}
+
+.preview-timer.is-running i {
+  background: #ff5757;
+  box-shadow: 0 0 0 6px rgba(255, 87, 87, 0.16);
+}
+
+.preview-timer span {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 #preview-stage:fullscreen {
   width: 100vw;
   height: 100vh;
@@ -169,6 +204,11 @@ h2 {
 #preview-stage:fullscreen .preview-box-stage {
   height: calc(100vh - 110px);
   min-height: 0;
+}
+
+#preview-stage:fullscreen .preview-timer {
+  top: 92px;
+  left: 24px;
 }
 
 .dock-card {
@@ -459,6 +499,10 @@ textarea {
   .card-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .preview-timer {
+    top: 106px;
   }
 
   .answer-card {
